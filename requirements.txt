@@ -1,0 +1,19 @@
+# ai-jianying-cut 依赖清单
+# 注意：已剔除 uiautomation（仅 Windows 自动导出，macOS 用不到）与 playwright（仅 Web-to-Video）。
+# ffmpeg/ffprobe 为系统二进制，需另行安装（brew install ffmpeg 或放置静态二进制到 PATH）。
+
+# 方舟 API 调用
+openai>=1.0
+
+# 媒体处理
+imageio-ffmpeg>=0.5      # 提供预编译 ffmpeg（也可直接用系统 ffmpeg）
+numpy
+opencv-python           # 主角识别可选（无则走量化 fallback）
+Pillow                   # 封面海报 / 帧抽取
+
+# 本地辅助
+requests
+psutil
+websockets
+edge-tts                 # 可选 TTS（默认未启用）
+pymediainfo              # 媒体信息（缺失时回退 ffprobe）

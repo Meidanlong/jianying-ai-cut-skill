@@ -1,0 +1,27 @@
+# 示例配置（非必需，供参考）
+# 真实运行时通过命令行参数或 .env 传入；此处仅展示可配置项。
+
+# 剪辑规则（传给豆包理解的提示词后缀）
+rule: "去口误,去静默,保留高光段,竖屏"
+
+# 剪映草稿项目名
+project: "AI_JianYing_Cut"
+
+# 封面标题 / 副标题（make_cover 用）
+cover:
+  title: "视频标题"
+  subtitle: ""
+
+# 画布方向：auto(按源自动) / portrait / landscape
+orientation: auto
+
+# 是否生成字幕轨 / 片头封面
+subtitles: true
+cover_intro: true
+
+# 主角识别扫描参数（identify_lead 用）
+lead:
+  start: 0.0
+  scan_end: 12.0
+  lead_end: 60.0
+  step: 0.5

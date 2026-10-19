@@ -1,0 +1,45 @@
+# ---- API Key / 环境变量（绝不提交）----
+.env
+.env.local
+
+# ---- 视频素材与成片（私人内容，禁止入库）----
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.wmv
+*.flv
+*.webm
+*.m4v
+*.mp3
+*.wav
+*.aac
+*.ogg
+
+# ---- 中间产物（可能含私人素材内容/字幕原文）----
+out/
+out_*/
+
+# ---- 生成的封面/字幕/草稿 JSON ----
+cover_*.png
+subtitle.ass
+draft_info.json
+draft_meta_info.json
+key_value.json
+
+# ---- Python ----
+__pycache__/
+*.pyc
+venv/
+.venv/
+_venv/
+_venv_jy/
+
+# ---- 系统 ----
+.DS_Store
+Thumbs.db
+
+# ---- 编辑器 ----
+.idea/
+.vscode/
+*.swp
