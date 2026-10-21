@@ -51,14 +51,28 @@ ai-jianying-cut/
 ├── README.md
 ├── requirements.txt
 ├── .gitignore  / .env.example
+├── docs/                         # 踩坑复盘与规范（重要！先看 pitfalls.md）
+│   ├── pitfalls.md               # 14 条实测坑（现象→原因→正确做法）+ 总索引
+│   ├── subtitle_spec.md          # 竖屏字幕样式规范
+│   ├── draft_selfcheck.md        # 草稿自检脚本用法
+│   └── export_fallback.md        # ffmpeg 直出兜底说明
 ├── scripts/
 │   ├── common.py                 # 环境变量 / 输出目录 / 时间码 / 媒体探测
 │   ├── ark_client.py             # 火山方舟统一客户端（上传/视频/音频/对话）
-│   ├── understand/               # 视频理解、音频转写、角色标注、情绪点
-│   ├── plan/                     # 分层决策、字幕保护、质量门
+│   ├── understand/               # 视频理解、音频转写、角色标注、情绪点、高光决策
+│   ├── plan/                     # 分层决策、字幕保护、质量门、build_plan(补集删除)
 │   ├── cover/                    # 主角识别、封面海报
-│   ├── subtitle/                 # SRT → ASS
-│   ├── bridge/build_jianying_draft.py  # 决策单 → 剪映草稿（精切核心）
+│   ├── subtitle/                 # SRT→ASS、校正词表、一键编排烧录
+│   │   ├── srt_to_ass.py         # 竖屏样式（白字黑描边默认值）
+│   │   ├── corrections.json       # ASR 错词→正词 + 粤语保护 + 待确认
+│   │   ├── apply_corrections.py   # 应用词表 + 产出复核清单
+│   │   └── build_subtitles.py     # 抽音→ASR→校正→烧录 一键编排
+│   ├── bridge/
+│   │   ├── build_jianying_draft.py  # 决策单 → 剪映草稿（精切核心）
+│   │   ├── build_pass1.py          # 第一遍粗剪（原始素材顺序单轨拼接）
+│   │   └── selfcheck_draft.py      # 草稿结构自检（单轨/时长/对齐/字幕落点）
+│   ├── export/
+│   │   └── ffmpeg_export.py        # 跳过剪映 GUI 的 ffmpeg 直出兜底
 │   └── run_pipeline.py           # 一键编排
 ├── references/                   # 草稿格式 / 模型 / 两遍剪映AI 说明
 ├── examples/                     # 示例配置与本地跑法
@@ -67,6 +81,9 @@ ai-jianying-cut/
     │   └── vendor/pyJianYingDraft/       # Apache-2.0 (© GuanYixuan)
     └── NOTICE.md                 # 第三方许可证与出处
 ```
+
+> ⚠️ 新手上路先看 **`docs/pitfalls.md`**：记录了 14 条实测踩坑（单轨拼接、明文自检、音视频对齐、方向自适应、保留段取高光补集、字幕重对齐、ffmpeg 兜底、专名校正、隐私红线等）。
+
 
 ## 产物（中间文件，默认 `out/`，已被 .gitignore 排除）
 

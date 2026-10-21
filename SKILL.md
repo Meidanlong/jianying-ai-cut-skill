@@ -26,6 +26,8 @@ description: 全自动/半自动短视频剪辑流水线。用豆包(火山方�
 
 > ⚠️ macOS 兼容要点：jianying-editor-skill v1.7 在 macOS **只生成草稿、不能自动导出**（自动导出仅 Windows）。因此「两遍剪映 AI」必须在剪映 App 内由 Doubao 通过 `mac_computer_use_tool` 操作 GUI 完成——这是有意为之的自动化边界，不是缺失功能。
 
+> 📌 **踩坑复盘先看 `docs/pitfalls.md`**：14 条实测坑（单轨拼接、剪映打开前明文自检、音视频逐段对齐、方向自适应、保留段取高光补集、字幕重对齐成片、ffmpeg 兜底、ASR 专名校正、隐私红线等），每条含「现象→原因→正确做法」。
+
 ## 完整流程
 
 ### 阶段一 · 豆包理解（全自动，需 ARK_API_KEY）
@@ -36,6 +38,8 @@ description: 全自动/半自动短视频剪辑流水线。用豆包(火山方�
 | 逐段角色标注 | `scripts/understand/understand_roles.py` | `out/roles_result.json` |
 | （可选）快节奏可删段 | `scripts/understand/compact_understand.py` | `out/compact_raw.json` |
 | 情绪/事件点派生 | `scripts/understand/understand_emotions.py` | `out/emotions_result.json` |
+| 高光决策（v1 宽松） | `scripts/understand/understand_highlights.py <视频> [输出json]` | `out/ganzehn_pass1_understand.json`（highlights/redundant/target_duration_sec） |
+| 高光决策（v2 激进） | `scripts/understand/understand_highlights_v2.py <视频> [输出json]` | `out/ganzehn_pass1_understand_v2.json`（目标更短、更激进删空镜） |
 
 ### 阶段二 · 决策与质检（全自动，纯本地）
 | 步骤 | 脚本 | 产物 / 作用 |
@@ -43,16 +47,21 @@ description: 全自动/半自动短视频剪辑流水线。用豆包(火山方�
 | 角色 → 分层决策 | `scripts/plan/roles_to_plan.py` | `out/compact_result.json`（删/留区间，结果句强制保护） |
 | 字幕保护 | `scripts/plan/fix_plan.py` | 重写决策单，说话段绝不删，只删无言停顿（备份 `.bak.json`） |
 | 关键信息质量门 | `scripts/plan/check_cut.py` | 退出码 0/1：结果/输赢句被删则报错阻断 |
+| 高光 → 决策单（补集删除） | `scripts/plan/build_plan.py <understand.json> --duration <总秒>` | `out/compact_result.json`（deletes=高光补集，杜绝 redundant 漏标缝隙导致时长超标，见 pitfalls #6） |
 
 ### 阶段三 · CodeBuddy 精切（全自动，生成剪映草稿）
 | 步骤 | 脚本 | 产物 |
 |---|---|---|
 | 主角识别 | `scripts/cover/identify_lead.py <视频>` | `out/lead_result.json` |
 | 封面海报 | `scripts/cover/make_cover.py <视频>` | `out/cover_34.png` / `out/cover_916.png` |
-| SRT → ASS | `scripts/subtitle/srt_to_ass.py` | `out/subtitle.ass` |
+| SRT → ASS | `scripts/subtitle/srt_to_ass.py` | `out/subtitle.ass`（竖屏白字黑描边，见 `docs/subtitle_spec.md`） |
+| 第一遍粗剪（原始单轨拼接） | `scripts/bridge/build_pass1.py --clips <8段...> --project <名>` | 草稿（无精切/无字幕/无封面，仅按文件名顺序拼单轨） |
 | **决策单 → 剪映草稿** | `scripts/bridge/build_jianying_draft.py --video <视频> --project <名>` | 剪映草稿文件夹（落草稿目录） |
+| **草稿结构自检（打开剪映前必跑）** | `scripts/bridge/selfcheck_draft.py <草稿目录> --target <秒>` | 逐项 PASS/FAIL（单轨/时长/音视频对齐/字幕落点），退出码 0/1 |
 
 > 剪映草稿只能「拼保留段」不能直接删段：`build_jianying_draft` 对删除区间取补集得到保留段，每段用 `source_timerange` 偏移拼到 VideoTrack；字幕按保留段重映射到目标时间轴；封面作为片头 3s 卡片。画布方向按源视频自动判定（竖屏 1080×1920 / 横屏 1920×1080）。
+
+> 🔤 **成片字幕必须对齐最终成片本身**（坑 #10）：精切/重拼后时间轴已变，务必对成片**重新抽音轨 → 重新 ASR**，不要用旧粗剪的 srt。一键编排：`scripts/subtitle/build_subtitles.py --video <成片> --out <字幕成片>`（抽音→ASR→校正→烧录）。ASR 专有名词/粤语谐音错用 `scripts/subtitle/corrections.json` 词表校正（`apply_corrections.py` 产出复核清单，含「胜瓜=粤语丝瓜」类保护词与待确认项，见 `docs/pitfalls.md` #11）。
 
 ### 阶段四 · 两遍剪映 AI（Doubao 通过 mac_computer_use_tool 操作剪映 GUI）
 > 这一段**不是脚本**，而是 Doubao 在剪映桌面端里用 `mac_computer_use_tool` 操控 GUI 完成。CodeBuddy 只负责把精确草稿准备好；最终 AI 处理与导出由 Doubao 在剪映内执行。
@@ -66,6 +75,8 @@ description: 全自动/半自动短视频剪辑流水线。用豆包(火山方�
   - 在初稿上套「AI 调色 / 智能配乐 / 一键成片」做最终润色。
   - 检查封面、字幕、节奏，确认无误后**点击导出**成片（macOS 无自动导出，必须由 Doubao 在 GUI 内点导出）。
   - 目的：产出最终短视频成片。
+
+> 💡 **导出兜底（坑 #7）**：若剪映 GUI 导出卡死 / 多进程混乱，可跳过 GUI，用 `scripts/export/ffmpeg_export.py --plan <决策单> --src <成片或源视频> --out <final.mp4>` 本地 `filter_complex` 直出（H.264+AAC）。缺点是不带剪映 AI 调色/配乐，见 `docs/export_fallback.md`。
 
 ## 一键运行
 ```bash
