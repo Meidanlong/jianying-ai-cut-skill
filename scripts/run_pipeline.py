@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ai-jianying-cut 总编排：一键跑通「豆包理解 → 决策质检 → CodeBuddy 精切 → 剪映草稿」。
+ai-jianying-cut 总编排：一键跑通「豆包理解 → 决策质检 → 脚本精切 → 剪映草稿」。
 
 阶段：
   1) 理解层：run_video_understand + audio_to_srt + understand_roles（+ 可选 compact_understand）

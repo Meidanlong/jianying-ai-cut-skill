@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-CodeBuddy 精切核心：把理解层产出的剪辑决策单(删除区间)转换成剪映草稿。
+脚本精切核心：把理解层产出的剪辑决策单(删除区间)转换成剪映草稿。
 
 剪映草稿只能"拼保留段"，不能直接删段。本脚本：
   1. 读 <out>/compact_result.json（deletes 删除区间）+ 视频时长，求"保留区间"补集；
@@ -76,7 +76,7 @@ def sec_to_us(x: float) -> int:
 
 
 def main():
-    ap = argparse.ArgumentParser(description="决策单 -> 剪映草稿（CodeBuddy 精切）")
+    ap = argparse.ArgumentParser(description="决策单 -> 剪映草稿（脚本精切）")
     ap.add_argument("--video", required=True, help="原视频路径")
     ap.add_argument("--project", default="AI_JianYing_Cut", help="剪映草稿项目名")
     ap.add_argument("--out-dir", default=None, help="中间产物目录(默认 out)")

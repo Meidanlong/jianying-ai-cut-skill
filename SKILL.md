@@ -1,14 +1,14 @@
 ---
 name: ai-jianying-cut
-description: 全自动/半自动短视频剪辑流水线。用豆包(火山方舟)视频/音频理解做内容决策，CodeBuddy 精切生成剪映草稿，再由 Doubao 通过 mac_computer_use_tool 操作剪映 GUI 完成「两遍剪映 AI」粗剪与精修导出。适合「把一段长视频（口播/生活记录/活动）自动剪出竖屏短视频成片」的任务。
+description: 全自动/半自动短视频剪辑流水线。用豆包(火山方舟)视频/音频理解做内容决策，脚本精切生成剪映草稿，再由 Doubao 通过 mac_computer_use_tool 操作剪映 GUI 完成「两遍剪映 AI」粗剪与精修导出。适合「把一段长视频（口播/生活记录/活动）自动剪出竖屏短视频成片」的任务。
 ---
 
 # ai-jianying-cut
 
-把「**豆包理解 + CodeBuddy 精切 + 两遍剪映 AI**」封装成可复用流程。
+把「**豆包理解 + 脚本精切 + 两遍剪映 AI**」封装成可复用流程。
 
 - **豆包理解**：视频/音频上传方舟，多模态理解产出「内容概述 + 逐段角色标注 + 带时间戳字幕 + 情绪点」。
-- **CodeBuddy 精切**：把理解层决策单（删除/保留区间）转换成**剪映草稿**（保留段拼时间轴 + 字幕轨 + 片头封面），落盘到 `~/Movies/JianyingPro/.../com.lveditor.draft/<项目名>/`。
+- **脚本精切**：把理解层决策单（删除/保留区间）转换成**剪映草稿**（保留段拼时间轴 + 字幕轨 + 片头封面），落盘到 `~/Movies/JianyingPro/.../com.lveditor.draft/<项目名>/`。
 - **两遍剪映 AI**：在剪映 App 内，**由 Doubao 通过 `mac_computer_use_tool` 操作剪映 GUI** 完成两遍 AI 处理与导出（见下）。
 
 ## 适用场景
@@ -44,7 +44,7 @@ description: 全自动/半自动短视频剪辑流水线。用豆包(火山方�
 | 字幕保护 | `scripts/plan/fix_plan.py` | 重写决策单，说话段绝不删，只删无言停顿（备份 `.bak.json`） |
 | 关键信息质量门 | `scripts/plan/check_cut.py` | 退出码 0/1：结果/输赢句被删则报错阻断 |
 
-### 阶段三 · CodeBuddy 精切（全自动，生成剪映草稿）
+### 阶段三 · 脚本精切（全自动，生成剪映草稿）
 | 步骤 | 脚本 | 产物 |
 |---|---|---|
 | 主角识别 | `scripts/cover/identify_lead.py <视频>` | `out/lead_result.json` |
@@ -55,10 +55,10 @@ description: 全自动/半自动短视频剪辑流水线。用豆包(火山方�
 > 剪映草稿只能「拼保留段」不能直接删段：`build_jianying_draft` 对删除区间取补集得到保留段，每段用 `source_timerange` 偏移拼到 VideoTrack；字幕按保留段重映射到目标时间轴；封面作为片头 3s 卡片。画布方向按源视频自动判定（竖屏 1080×1920 / 横屏 1920×1080）。
 
 ### 阶段四 · 两遍剪映 AI（Doubao 通过 mac_computer_use_tool 操作剪映 GUI）
-> 这一段**不是脚本**，而是 Doubao 在剪映桌面端里用 `mac_computer_use_tool` 操控 GUI 完成。CodeBuddy 只负责把精确草稿准备好；最终 AI 处理与导出由 Doubao 在剪映内执行。
+> 这一段**不是脚本**，而是 Doubao 在剪映桌面端里用 `mac_computer_use_tool` 操控 GUI 完成。脚本只负责把精确草稿准备好；最终 AI 处理与导出由 Doubao 在剪映内执行。
 
 - **第一遍剪映 AI（粗剪 / 初处理）**
-  - 打开 CodeBuddy 生成的草稿（或导入原素材）。
+  - 打开 脚本生成的草稿（或导入原素材）。
   - 用剪映的「智能字幕 / 文稿匹配」补齐并校验语音字幕；如对节奏不满意，可触发「剪口播 / AI 成片」做一次镜头初切。
   - 目的：让字幕与镜头初版就位，作为后续精修底稿。
 
