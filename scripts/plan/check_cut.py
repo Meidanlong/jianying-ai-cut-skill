@@ -39,10 +39,9 @@ def srt_segments(srt_text: str) -> list:
     return segs
 
 
-def kept_ranges(plan) -> list:
-    """由删除区间推出保留段。"""
+def kept_ranges(plan, dur: float) -> list:
+    """由删除区间推出保留段。dur 为视频总时长（取字幕跨度/真实时长，勿由删除区间推导）。"""
     deletes = sorted((ts2sec(p["start"]), ts2sec(p["end"])) for p in plan["deletes"])
-    dur = max(e for _, e in deletes) + 5
     keeps = [(0.0, dur)]
     for ds, de in deletes:
         nk = []
@@ -66,7 +65,10 @@ def main():
 
     plan = json.loads(Path(plan_path).read_text(encoding="utf-8"))
     segs = srt_segments(Path(srt_path).read_text(encoding="utf-8"))
-    keeps = kept_ranges(plan)
+    # 时长以字幕覆盖的真实跨度为准（删除区间若都集中在开头，
+    # 不能据此把之后的全部内容误判为"已删除"）。
+    dur = max((e for _, e, _ in segs), default=0.0) if segs else 0.0
+    keeps = kept_ranges(plan, dur)
 
     def inside(t: float) -> bool:
         return any(s - 0.1 <= t <= e + 0.1 for s, e in keeps)
