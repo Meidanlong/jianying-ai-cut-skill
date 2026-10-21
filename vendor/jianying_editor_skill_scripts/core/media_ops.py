@@ -1,6 +1,7 @@
 import hashlib
 import os
 import shutil
+import subprocess
 import sys
 from typing import Union
 
@@ -102,11 +103,23 @@ class MediaOpsMixin:
         start_time: Union[str, int] = None,
         duration: Union[str, int] = None,
         track_name: str = "AudioTrack",
+        source_start: Union[str, int] = 0,
         **kwargs,
     ):
         if start_time is None:
             start_time = self.get_track_duration(track_name)
         self._ensure_track(draft.TrackType.audio, track_name)
+
+        # 容错：传入的可能是含视频轨的整片（.mov/.mp4）。
+        # AudioMaterial 会拒绝含视频轨的文件（"音频素材不应包含视频轨道"），
+        # 导致音频段被静默丢弃、出现音视频不同步。这里抽离出纯音频文件，
+        # 保证音频与视频按同一 source_timerange 同步裁切。
+        pure_audio = self._extract_pure_audio(media_path)
+        if pure_audio:
+            media_path = pure_audio
+
+        # 与视频素材一致：把音频所在文件复制进草稿目录，保证自包含、路径稳定
+        media_path = self._stage_local_asset(media_path)
 
         try:
             mat = draft.AudioMaterial(media_path)
@@ -115,14 +128,72 @@ class MediaOpsMixin:
             return None
 
         start_us = safe_tim(start_time)
-        actual_duration = self._calculate_duration(duration, phys_duration)
+        src_start_us = safe_tim(source_start)
+        actual_duration = self._calculate_duration(duration, phys_duration - src_start_us)
 
         seg = draft.AudioSegment(
-            mat, trange(start_us, actual_duration), source_timerange=trange(0, actual_duration)
+            mat,
+            trange(start_us, actual_duration),
+            source_timerange=trange(src_start_us, actual_duration),
         )
         target_track = self._find_available_audio_track_name(track_name, seg)
         self.script.add_segment(seg, target_track)
         return seg
+
+    # 缓存：同一视频文件只抽离一次音频，避免每段重复解封装 498MB 大文件
+    _pure_audio_cache: "dict[str, str]" = {}
+
+    def _extract_pure_audio(self, media_path: str) -> str:
+        """若文件含视频轨，则抽离其音频为独立 .m4a（AAC）文件并返回路径；否则返回 ""。
+
+        目的：AudioMaterial 只能接受纯音频文件。当调用方传入的是整片视频
+        （含视频轨）时，抽离出纯音频供音频轨使用，从而保证音视频同步裁切。
+        结果按源文件绝对路径缓存。
+        """
+        src = os.path.abspath(media_path)
+        if src in MediaOpsMixin._pure_audio_cache:
+            return MediaOpsMixin._pure_audio_cache[src]
+
+        try:
+            probe = subprocess.run(
+                ["ffprobe", "-v", "error", "-select_streams", "v:0",
+                 "-show_entries", "stream=index", "-of", "csv=p=0", src],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30,
+            )
+            has_video = bool(probe.stdout.strip())
+        except Exception:
+            has_video = False
+
+        if not has_video:
+            MediaOpsMixin._pure_audio_cache[src] = ""
+            return ""
+
+        parent = os.path.dirname(src)
+        stem, _ = os.path.splitext(os.path.basename(src))
+        out = os.path.join(parent, f".{stem}.__pure_audio__.m4a")
+        try:
+            if not (os.path.exists(out) and os.path.getsize(out) > 0):
+                # 优先流拷贝：源已是 AAC 时，copy 能保留精确时长（避免重编码引入的
+                # ~14ms 编码延迟导致音视频段错位）；非 AAC（如 apple_apac）再退回重编码。
+                r = subprocess.run(
+                    ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                     "-i", src, "-vn", "-c:a", "copy", out],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=600,
+                )
+                if r.returncode != 0 or not (os.path.exists(out) and os.path.getsize(out) > 0):
+                    subprocess.run(
+                        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                         "-i", src, "-vn", "-c:a", "aac", "-b:a", "192k", out],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=600,
+                    )
+            if os.path.exists(out) and os.path.getsize(out) > 0:
+                MediaOpsMixin._pure_audio_cache[src] = out
+                return out
+        except Exception as e:
+            print(f"⚠️ 音频抽离失败（将跳过该段音频）: {e}")
+
+        MediaOpsMixin._pure_audio_cache[src] = ""
+        return ""
 
     def _add_video_safe(
         self,
@@ -163,6 +234,7 @@ class MediaOpsMixin:
             mat,
             trange(start_us, actual_duration),
             source_timerange=trange(src_start_us, actual_duration),
+            volume=0,  # 视频轨静音：音频由独立的音频轨（与视频同步裁切）提供，避免双重音轨
         )
         self.script.add_segment(seg, track_name)
         return seg

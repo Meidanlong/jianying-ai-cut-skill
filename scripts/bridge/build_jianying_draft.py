@@ -129,7 +129,7 @@ def main():
         else:
             print(f"[cover] 未找到 {cover}，跳过片头（先跑 make_cover.py）")
 
-    # 4) 拼保留段视频 clip
+    # 4) 拼保留段视频 clip（每段同步加一段同区间的音频，保证音视频一起裁切）
     target_cursor = sec_to_us(cover_offset)
     cum = cover_offset
     keep_map = []  # (ks, ke, cum_before)
@@ -138,10 +138,13 @@ def main():
         length = ke - ks
         project.add_clip(args.video, source_start=src_start, duration=length,
                          target_start=target_cursor, track_name="VideoTrack")
+        # 音频与视频同一保留段：target 起点=目标游标，source 偏移=段起点
+        project.add_audio_safe(args.video, start_time=target_cursor, duration=length,
+                               source_start=src_start, track_name="AudioTrack")
         target_cursor += sec_to_us(length)
         keep_map.append((ks, ke, cum))
         cum += length
-    print(f"[video] 共拼 {len(keeps)} 段视频，目标时长 {cum:.2f}s")
+    print(f"[video] 共拼 {len(keeps)} 段视频+音频，目标时长 {cum:.2f}s")
 
     # 5) 字幕轨（按保留区间重映射）
     if not args.no_subtitles:

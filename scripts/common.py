@@ -102,8 +102,12 @@ def video_size(video: str):
              "-of", "csv=p=0", video],
             capture_output=True, text=True, check=True,
         )
-        w, h = out.stdout.strip().split(",")
-        return int(w), int(h)
+        # csv=p=0 输出可能带行尾逗号/空字段，取首个非空行的前两个数值
+        line = next((l for l in out.stdout.splitlines() if l.strip()), "")
+        parts = [p for p in line.split(",") if p.strip()]
+        if len(parts) < 2:
+            return None, None
+        return int(parts[0]), int(parts[1])
     except Exception:
         return None, None
 

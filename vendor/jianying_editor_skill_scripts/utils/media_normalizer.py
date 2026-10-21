@@ -51,13 +51,13 @@ def should_normalize_video_for_jianying(input_path: str) -> bool:
         return False
     width = int(info.get("width") or 0)
     height = int(info.get("height") or 0)
+    # 只在编码不兼容时归一化（H.264 + yuv420p 即可被剪映原生导入）。
+    # 不再因 width%16 / height%2 强制重编码，否则合法竖屏 1080x1920 也会被转成横屏。
     return (
         info.get("codec_name") != "h264"
         or info.get("pix_fmt") != "yuv420p"
         or width <= 0
         or height <= 0
-        or width % 16 != 0
-        or height % 2 != 0
     )
 
 
@@ -80,6 +80,19 @@ def normalize_video_for_jianying(input_path: str, force: bool = False) -> Option
     if _is_cache_fresh(src, dst):
         return dst
 
+    # 按素材方向决定目标画布：竖屏(h>w)->1080x1920，横屏(w>h)->1920x1080。
+    info = _probe_video(src)
+    vw = int(info.get("width") or 0)
+    vh = int(info.get("height") or 0)
+    if vh > vw:
+        tw, th = 1080, 1920          # 竖屏 9:16
+    else:
+        tw, th = 1920, 1080          # 横屏 16:9
+    vf = (
+        f"scale={tw}:{th}:force_original_aspect_ratio=decrease,"
+        f"pad={tw}:{th}:(ow-iw)/2:(oh-ih)/2"
+    )
+
     cmd = [
         "ffmpeg",
         "-hide_banner",
@@ -93,8 +106,7 @@ def normalize_video_for_jianying(input_path: str, force: bool = False) -> Option
         "-map",
         "0:a?",
         "-vf",
-        "scale=1920:1080:force_original_aspect_ratio=decrease,"
-        "pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
+        vf,
         "-r",
         "30",
         "-c:v",

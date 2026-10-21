@@ -46,8 +46,11 @@ def get_ffmpeg() -> str:
     exe = os.getenv("FFMPEG")
     if exe and Path(exe).exists():
         return exe
-    import imageio_ffmpeg
-    return imageio_ffmpeg.get_ffmpeg_exe()
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return "ffmpeg"  # 回退到 PATH 上的系统 ffmpeg
 
 
 def probe_duration(video: str) -> float:
@@ -67,7 +70,7 @@ def probe_duration(video: str) -> float:
 def extract_frame(video: str, t: float, out_png: str):
     ff = get_ffmpeg()
     subprocess.run([ff, "-y", "-ss", f"{t:.3f}", "-i", video,
-                    "-frames:v", "1", "-q:v", "2", out_png],
+                    "-frames:v", "1", "-update", "1", "-q:v", "2", out_png],
                    check=True, capture_output=True)
 
 
