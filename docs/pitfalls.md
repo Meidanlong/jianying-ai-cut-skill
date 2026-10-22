@@ -66,6 +66,11 @@
 - **原因**：缺少结构校验，问题到剪映里才暴露。
 - **正确做法**：`python scripts/bridge/selfcheck_draft.py <草稿目录> --target <秒>` 作为质量门：视频轨==1、总时长∈目标区间、每段音视频对齐偏差<50ms、字幕段全部落在保留段内。另已有 `scripts/plan/check_cut.py` 校验「关键信息句不被删」。两者组合覆盖结构与语义两层。
 
+### #15 未定 brief 直接让豆包判高光，判断跑偏
+- **现象**：没先和用户澄清需求就直接把视频丢给豆包按默认提示词判高光/冗余，结果把「环境铺垫/收尾安利」当冗余删了，或保留了用户想删的进食空镜；`build_plan` 出来的保留时长也常偏离预期。
+- **原因**：高光/冗余判断缺用户口径锚点，模型按通用审美（偏好快节奏、爱留特写）跑偏，必保/必删倾向无来源。
+- **正确做法**：精切前必须先有结构化 brief（步骤 0.5），把 `must_keep`/`must_delete` 与目标时长区间喂给 `understand_highlights*.py` 提示词；`build_plan.py` 用 `target_duration` 区间做硬校验（越界非零退出），`selfcheck_draft.py` 以该区间为自检窗口。无 brief 时脚本回退默认，但质量不保证。
+
 ---
 
 ## GUI 类（详见 references/two_pass_jianying_ai.md）
@@ -93,3 +98,4 @@
 | 12 | 字幕 | 竖屏字幕样式规范 | srt_to_ass.py + subtitle_spec.md |
 | 13 | 工程 | 禁提交 key/绝对路径/邮箱 | .gitignore + 隐私清单 |
 | 14 | 工程 | 导出前自动化自检 | selfcheck_draft.py + check_cut.py |
+| 15 | 流程 | 先定 brief 再判高光（步骤0.5） | understand_highlights/build_plan/selfcheck + pitfalls #15 |

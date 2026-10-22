@@ -11,14 +11,16 @@
 ## 原理
 
 ```
-视频 ──ffmpeg抽音轨──> 音频 ──豆包音频理解──> 带时间戳字幕(SRT)
-视频 ──豆包视频理解──> 内容概述 + 逐段角色标注(核心结果/关键动作/冗余...)
+[0] 原素材 ──[0.5] 需求澄清/brief 定稿(Doubao)──> clip_brief.yaml
+原素材 ──[1] 第一遍剪映智能粗剪(GUI, Doubao)──> 粗剪版
+粗剪版 ──ffmpeg抽音轨──> 音频 ──豆包音频理解──> 带时间戳字幕(SRT)
+粗剪版 ──豆包视频理解──> 内容概述 + 逐段角色标注 + 高光/冗余决策(brief 注入)
         │
-        ▼ 分层决策 + 质量门（结果句强制保护 / 字幕保护）
-   剪辑决策单(删/留区间) ──CodeBuddy 精切──> 剪映草稿(保留段拼轴 + 字幕 + 封面)
+        ▼ 分层决策 + 质量门（结果句强制保护 / 字幕保护 / brief 时长校验）
+   剪辑决策单(删/留区间) ──CodeBuddy 精切──> 剪映草稿(保留段拼轴 + 字幕 + 封面) ──[5] 草稿自检(剪映打开前)
         │
         ▼ 剪映 App 内（Doubao 经 mac_computer_use_tool 操作 GUI）
-   第一遍剪映AI(智能字幕/初切) ──> 第二遍剪映AI(AI调色/配乐/一键成片) ──> 导出成片
+   [6] 第二遍剪映AI(智能字幕/调色/配乐/一键成片) ──> 导出成片
 ```
 
 ## 快速开始
@@ -35,9 +37,12 @@ pip install -r requirements.txt
 # 4. 配置 Key：复制 .env.example 为 .env 并填写 ARK_API_KEY
 cp .env.example .env   # 编辑填入你的火山方舟 API Key
 
-# 5. 跑流水线
+# 4.5 定剪辑需求 brief（向用户澄清，产出 clip_brief.yaml；可省略走默认）
+cp examples/clip_brief.yaml my_brief.yaml   # 按需修改 topic/target_duration/must_keep/must_delete
+
+# 5. 跑流水线（--brief 可选；不传则脚本回退默认行为）
 python scripts/run_pipeline.py --video /path/to/your_video.mov \
-    --rule "去口误,去静默,保留高光段,竖屏" --project 我的剪辑
+    --rule "去口误,去静默,保留高光段,竖屏" --project 我的剪辑 --brief my_brief.yaml
 
 # 无 Key 也可以先用占位数据跑通结构：
 python scripts/run_pipeline.py --dry-run
