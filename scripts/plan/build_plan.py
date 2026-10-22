@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import out_dir, sec2ts  # noqa: E402
+from common import out_dir, sec2ts, load_brief, brief_target_range  # noqa: E402
 
 
 def complement(highlights, total):
@@ -42,6 +42,7 @@ def main():
     ap.add_argument("understand", help="豆包理解结果 json（含 highlights）")
     ap.add_argument("--duration", type=float, default=None,
                     help="源视频总时长(秒)；省略则取 highlights 最大结束时间")
+    ap.add_argument("--brief", help="剪辑需求 brief(yaml)；读取 target_duration 区间做时长校验")
     ap.add_argument("--out", help="输出路径（默认 <out>/compact_result.json）")
     args = ap.parse_args()
 
@@ -59,12 +60,28 @@ def main():
     deletes = complement(highlights, total)
     keep_total = sum(float(h["end"]) - float(h["start"]) for h in highlights)
 
+    # brief 目标时长区间校验（坑 #15：brief 缺失会导致高光判断跑偏，这里兜底卡时长）
+    target_sec = None
+    if args.brief:
+        brief = load_brief(args.brief)
+        rng = brief_target_range(brief)
+        if rng:
+            lo, hi = rng
+            target_sec = round((lo + hi) / 2)
+            if not (lo - 1e-6 <= keep_total <= hi + 1e-6):
+                print(f"⚠️ 保留总时长 {keep_total:.2f}s 不在 brief 目标区间 "
+                      f"[{lo:.0f},{hi:.0f}]s 内，请回看 understand_highlights 提示词或 brief")
+                sys.exit(1)
+            print(f"[ok] 保留总时长 {keep_total:.2f}s ∈ brief 目标区间 [{lo:.0f},{hi:.0f}]s")
+
     out = args.out or str(out_dir() / "compact_result.json")
     result = {
         "summary": data.get("summary", ""),
         "highlights": highlights,
         "deletes": [{"start": sec2ts(s), "end": sec2ts(e)} for s, e in deletes],
     }
+    if target_sec is not None:
+        result["target_duration_sec"] = target_sec
     Path(out).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print(f"highlights={len(highlights)}  keeps总时长={keep_total:.2f}s"

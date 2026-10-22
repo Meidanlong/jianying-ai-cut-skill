@@ -3,20 +3,26 @@
 """
 ai-jianying-cut 总编排：一键跑通「豆包理解 → 决策质检 → CodeBuddy 精切 → 剪映草稿」。
 
-阶段：
-  1) 理解层：run_video_understand + audio_to_srt + understand_roles（+ 可选 compact_understand）
-  2) 决策层：roles_to_plan → fix_plan → check_cut（质量门）
-  3) 字幕/封面/情绪：srt_to_ass + identify_lead + make_cover + understand_emotions
-  4) 精切层：build_jianying_draft（生成剪映草稿）
+标准阶段顺序（见 SKILL.md）：
+  0  环境素材准备
+  0.5 需求澄清与剪辑 brief 定稿（Doubao 向用户澄清，产出 clip_brief.yaml）
+  1  第一遍剪映智能粗剪（Doubao 经 mac_computer_use_tool 操作剪映 GUI，导出粗剪版）
+  2  豆包理解（消费粗剪版：视频理解 + 音频转写 + 角色/情绪标注 + 高光决策）
+  3  决策质检（纯本地）
+  4  CodeBuddy 精切生成剪映草稿
+  5  草稿结构自检（剪映打开前必跑）
+  6  第二遍剪映 AI 精修 + 导出（GUI，Doubao）
 
-两遍剪映 AI（在剪映 App 内由 Doubao 通过 mac_computer_use_tool 操作 GUI 完成）见 SKILL.md。
+本脚本负责 0/2/3/4/5 的程序化部分；阶段 1 与 6 由 Doubao 在剪映 GUI 内完成，脚本不伪造 GUI 调用。
+传 --brief 时，阶段 3 走「高光决策 + 补集删除」路径（understand_highlights + build_plan），
+否则走原有「角色分层决策」路径（roles_to_plan + fix_plan）。两路径下游均经 check_cut 质量门。
 
 用法:
-  python run_pipeline.py --video <视频> [--rule "..."] [--project 项目名]
+  python run_pipeline.py --video <视频> [--rule "..."] [--project 项目名] [--brief 路径]
        [--out-dir out] [--dry-run] [--skip-draft] [--no-cover]
 
-  --dry-run   不调用任何 API，用占位数据跑通结构（用于无 Key / CI 演示）。
-              （仍需一个本地视频才做片头/抽帧；无视频时跳过 cover/lead/draft）
+  --brief <yaml>  剪辑需求 brief（步骤 0.5 产出）；下游 understand_highlights / build_plan 读取。
+  --dry-run       不调用任何 API，用占位数据跑通结构（用于无 Key / CI 演示）。
 """
 import argparse
 import json
@@ -35,7 +41,7 @@ BRIDGE = SCRIPTS / "bridge"
 
 # 把 scripts 加入路径，便于 import common
 sys.path.insert(0, str(SCRIPTS))
-from common import out_dir, load_env  # noqa: E402
+from common import out_dir, load_env, load_brief, probe_duration  # noqa: E402
 
 
 def run(script: Path, *args, env=None, check=True):
@@ -93,6 +99,7 @@ def main():
     ap.add_argument("--project", default="AI_JianYing_Cut", help="剪映草稿项目名")
     ap.add_argument("--out-dir", default=None, help="中间产物目录(默认 out)")
     ap.add_argument("--dry-run", action="store_true", help="不调用 API，用占位数据跑通")
+    ap.add_argument("--brief", default=None, help="剪辑需求 brief(yaml)，步骤0.5产出；驱动高光决策路径并透传下游")
     ap.add_argument("--skip-draft", action="store_true", help="不生成剪映草稿")
     ap.add_argument("--no-cover", action="store_true", help="不生成封面/片头")
     ap.add_argument("--title", default="视频标题", help="封面标题")
@@ -103,6 +110,17 @@ def main():
     odir = out_dir() if not args.out_dir else Path(args.out_dir)
     odir.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
+
+    # ---- 步骤 0.5：需求澄清 / brief 定稿（Doubao 监督；脚本仅加载、校验、向下游透传） ----
+    brief = load_brief(args.brief) if args.brief else None
+    if brief:
+        print("=== 0.5 剪辑需求 brief 定稿 ===")
+        print(f"  topic          : {brief.get('topic')}")
+        print(f"  target_duration: {brief.get('target_duration')}")
+        print(f"  orientation    : {brief.get('orientation')}")
+        print(f"  must_keep      : {brief.get('must_keep')}")
+        print(f"  must_delete    : {brief.get('must_delete')}")
+        print("  (brief 将透传给 understand_highlights / build_plan / selfcheck_draft)")
 
     has_key = bool(os.environ.get("ARK_API_KEY"))
     if args.dry_run:
@@ -126,9 +144,21 @@ def main():
                 run(UNDERSTAND / "audio_to_srt.py", audio_mp3, env=env)
         run(UNDERSTAND / "understand_roles.py", env=env)
 
-    # ---- 阶段 2：决策层（无论 dry-run 还是真实都跑，纯本地） ----
-    run(PLAN / "roles_to_plan.py", env=env)
-    run(PLAN / "fix_plan.py", env=env)
+    # ---- 阶段 3：决策层（纯本地）----
+    # 标准阶段顺序：0 环境 → 0.5 brief → 1 第一遍粗剪(GUI,Doubao) → 2 豆包理解 →
+    # 3 决策质检 → 4 精切草稿 → 5 自检 → 6 第二遍剪映精修导出。
+    # 注：阶段 1（第一遍粗剪）由 Doubao 经 mac_computer_use_tool 操作剪映 GUI 完成，本脚本不伪造 GUI 调用。
+    if args.brief and not args.dry_run and args.video and Path(args.video).exists():
+        # brief 驱动路径：高光决策 + 补集删除（替代 roles 路径）
+        hl_out = odir / "ganzehn_pass1_understand.json"
+        run(UNDERSTAND / "understand_highlights.py", args.video, str(hl_out),
+            "--brief", args.brief, env=env)
+        dur = probe_duration(args.video)
+        run(PLAN / "build_plan.py", str(hl_out), "--duration", str(dur),
+            "--brief", args.brief, env=env)
+    else:
+        run(PLAN / "roles_to_plan.py", env=env)
+        run(PLAN / "fix_plan.py", env=env)
     rc = run(PLAN / "check_cut.py", env=env, check=False)
     if rc != 0:
         print("❌ 质量门未通过：关键结果信息可能被误删，请检查决策单后重试。")

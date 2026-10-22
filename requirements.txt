@@ -13,6 +13,7 @@ Pillow                   # 封面海报 / 帧抽取
 
 # 本地辅助
 requests
+PyYAML>=6.0              # 读取 examples/clip_brief.yaml（剪辑需求 brief）
 psutil
 websockets
 edge-tts                 # 可选 TTS（默认未启用）

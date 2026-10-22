@@ -1,0 +1,43 @@
+# 剪辑需求 brief（步骤 0.5 产出）— 下游 understand_highlights / build_plan / selfcheck 的输入依据。
+# 由 Doubao 向用户澄清后定稿；本文件为「探店 vlog」中性示范（不写真实门店名）。
+# 字段说明：必填 5 项；选填项省略即走脚本默认行为。
+
+# ===== 必填字段（5 项）=====
+# 主题与口径：探店 / 美食 vlog / 评测 / 记录 等，决定豆包理解时的基调
+topic: "家常菜探店 vlog｜种草向"
+
+# 目标保留时长区间（秒）：[min, max]，豆包高光决策与 build_plan 时长校验都以此为锚
+target_duration: [60, 90]
+
+# 画幅：portrait（竖屏）/ landscape（横屏）/ auto（按源自动）
+orientation: portrait
+
+# 必保内容类型（豆包判断高光时优先保留，可多条）
+must_keep:
+  - 菜品特写
+  - 口味评价
+  - 惊艳反应
+  - 门店环境铺垫
+  - 收尾安利
+
+# 必删内容类型（豆包判断冗余时优先剔除，可多条）
+must_delete:
+  - 沉默进食
+  - 重复夹菜
+  - 空镜停顿
+  - 废话过渡
+  - 无信息外景
+
+# ===== 选填字段（省略走默认）=====
+rhythm: compact            # 节奏倾向：compact（紧凑）/ normal（常规）
+subtitles: true            # 是否生成字幕轨
+subtitle_lang: zh-CN       # 字幕语言
+cover: true                # 是否生成片头封面卡片
+cover_title: ""            # 封面主标题（留空则由封面脚本取默认）
+bgm: true                  # 智能配乐（第二遍剪映 AI 处理）
+transitions: true          # 转场（第二遍剪映 AI 处理）
+platform: 抖音             # 发布平台（影响时长/画幅建议）
+forbidden: []              # 特殊禁忌：不要出现的画面/口播（如竞品、某人出镜）
+
+# 兼容旧 sample_config 的 rule 后缀（可选；可由上方字段派生，二选一即可）
+# rule: "去口误,去静默,保留高光段,竖屏"

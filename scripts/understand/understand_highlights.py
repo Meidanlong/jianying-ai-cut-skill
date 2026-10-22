@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import out_dir, load_env, ensure_on_path  # noqa: E402
+from common import out_dir, load_env, ensure_on_path, load_brief, inject_brief_into_prompt  # noqa: E402
 ensure_on_path()
 from ark_client import upload_file, video_understand, DEFAULT_VIDEO_MODEL  # noqa: E402
 
@@ -61,22 +61,41 @@ PROMPT = (
 
 def main():
     load_env()
-    video = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_VIDEO
-    out_name = sys.argv[2] if len(sys.argv) > 2 else DEFAULT_OUT
+    # 解析可选 --brief（其余位置参数保持原语义：视频路径、输出名）
+    brief_path = None
+    clean = []
+    i = 0
+    rest = sys.argv[1:]
+    while i < len(rest):
+        if rest[i] == "--brief":
+            brief_path = rest[i + 1]
+            i += 2
+        else:
+            clean.append(rest[i])
+            i += 1
+    video = clean[0] if clean else DEFAULT_VIDEO
+    out_name = clean[1] if len(clean) > 1 else DEFAULT_OUT
     odir = out_dir()
     out_path = odir / out_name
+
+    brief = load_brief(brief_path) if brief_path else None
+    if brief:
+        print(f"[brief] 已加载剪辑需求: topic={brief.get('topic')!r} "
+              f"目标时长={brief.get('target_duration')} 画幅={brief.get('orientation')}")
 
     # 1) 上传视频（fps 0.3 控制抽帧密度，节省 token）
     file_id = upload_file(video, preprocess={"video": {"fps": 0.3}})
 
-    # 2) 视频理解
+    # 2) 视频理解（提示词拼入 brief 需求；无 brief 则走默认提示词）
     print("[2/2] 豆包理解视频内容（高光/冗余决策）...")
-    text = video_understand(file_id, PROMPT, model=DEFAULT_VIDEO_MODEL)
+    prompt = inject_brief_into_prompt(PROMPT, brief, default_range=(60, 90))
+    text = video_understand(file_id, prompt, model=DEFAULT_VIDEO_MODEL)
 
     result = extract_json(text)
     result.setdefault("model", DEFAULT_VIDEO_MODEL)
     result.setdefault("video", video)
     result.setdefault("file_id", file_id)
+    result.setdefault("brief_topic", (brief or {}).get("topic"))
 
     out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
 

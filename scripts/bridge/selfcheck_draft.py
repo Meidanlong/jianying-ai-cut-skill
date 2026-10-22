@@ -6,11 +6,12 @@
 用法:
   python selfcheck_draft.py <草稿目录或draft_info.json路径>
   python selfcheck_draft.py <草稿目录> --target 89 --tol 5
+  python selfcheck_draft.py <草稿目录> --brief examples/clip_brief.yaml --tol 5
   python selfcheck_draft.py <草稿目录> --plan out/compact_result.json
 
 断言项（坑 #1/#4/#6/#14）:
   1) 视频轨数量 == 1（单轨首尾相接，无叠层多轨）
-  2) 视频段总时长 ∈ [target-tol, target+tol]（target 来自 --target 或 plan 的 target_duration_sec）
+  2) 视频段总时长 ∈ 目标区间（目标来自 --brief 的 target_duration[min,max] 或 --target 单值 或 --plan 的 target_duration_sec，容差 --tol）
   3) 每段音视频对齐偏差 < 50ms（音频段与对应视频段起止对齐）
   4) 字幕段全部落在保留段内（不飘在删除/缝隙里）
 
@@ -23,7 +24,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import ts2sec  # noqa: E402
+from common import ts2sec, load_brief, brief_target_range  # noqa: E402
 
 
 def load_draft(path):
@@ -54,7 +55,8 @@ def segs_of(track):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("draft", help="草稿目录或 draft_info.json 路径")
-    ap.add_argument("--target", type=float, default=None, help="目标总时长(秒)")
+    ap.add_argument("--target", type=float, default=None, help="目标总时长(秒，单值)")
+    ap.add_argument("--brief", help="剪辑需求 brief(yaml)；用其 target_duration[min,max] 作为目标区间")
     ap.add_argument("--tol", type=float, default=5.0, help="时长容差(秒)，默认 5")
     ap.add_argument("--plan", help="compact_result.json（取 target_duration_sec / keeps）")
     ap.add_argument("--av-threshold", type=float, default=0.05, help="音视频对齐阈值(秒)，默认 0.05")
@@ -74,18 +76,27 @@ def main():
     # 1) 视频轨数量
     results.append(("视频轨数量 == 1", len(video) == 1, f"实际 {len(video)} 条"))
 
-    # 2) 总时长
+    # 2) 总时长（目标区间优先级：--brief > --target > --plan）
     total_v = sum(s["t_dur"] for s in vsegs)
-    target = args.target
-    if target is None and args.plan:
+    tmin = tmax = None
+    if args.brief:
+        b = load_brief(args.brief)
+        rng = brief_target_range(b)
+        if rng:
+            tmin, tmax = rng
+    if tmin is None and args.target is not None:
+        tmin = tmax = args.target
+    if tmin is None and args.plan:
         pd = json.loads(Path(args.plan).read_text(encoding="utf-8"))
-        target = pd.get("target_duration_sec")
-    if target:
-        ok = abs(total_v - target) <= args.tol
-        results.append((f"总时长 ∈ [{target-args.tol:.0f}, {target+args.tol:.0f}]s",
-                        ok, f"实际 {total_v:.2f}s vs 目标 {target:.0f}s"))
+        t = pd.get("target_duration_sec")
+        if t:
+            tmin = tmax = t
+    if tmin is not None:
+        ok = (tmin - args.tol) <= total_v <= (tmax + args.tol)
+        results.append((f"总时长 ∈ [{tmin-args.tol:.0f}, {tmax+args.tol:.0f}]s (brief/target/plan)",
+                        ok, f"实际 {total_v:.2f}s vs 目标 [{tmin:.0f},{tmax:.0f}]s"))
     else:
-        results.append(("总时长区间检查", True, f"实际 {total_v:.2f}s（未给 --target，跳过区间判定）"))
+        results.append(("总时长区间检查", True, f"实际 {total_v:.2f}s（未给 --target/--brief/--plan，跳过区间判定）"))
 
     # 3) 音视频对齐
     if asegs and len(asegs) == len(vsegs):

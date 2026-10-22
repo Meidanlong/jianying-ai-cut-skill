@@ -25,6 +25,77 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
 
 
+# ---------------------------------------------------------------------------
+# 剪辑需求 brief（步骤 0.5 产出，下游 understand_highlights / build_plan / selfcheck 读取）
+# ---------------------------------------------------------------------------
+def load_yaml(path: str) -> dict:
+    """读取 YAML 配置文件，失败抛异常。依赖 PyYAML。"""
+    import yaml
+    return yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+
+
+def load_brief(path: str = None) -> dict:
+    """加载剪辑需求 brief（examples/clip_brief.yaml）。
+
+    不传 path 时返回 None（向后兼容：无 brief 走默认行为）。
+    返回 dict，至少应含 必填 5 字段：topic / target_duration[min,max] /
+    orientation / must_keep / must_delete。其余字段带默认值由调用方处理。
+    """
+    if not path:
+        return None
+    p = Path(path)
+    if not p.exists():
+        raise SystemExit(f"❌ 找不到 brief 文件: {path}")
+    data = load_yaml(str(p)) or {}
+    return data
+
+
+def brief_target_range(brief: dict):
+    """从 brief 取目标保留时长区间 [min, max]，缺失返回 None。"""
+    if not brief:
+        return None
+    td = brief.get("target_duration")
+    if isinstance(td, (list, tuple)) and len(td) == 2:
+        return float(td[0]), float(td[1])
+    return None
+
+
+def _brief_block(brief: dict) -> str:
+    """把 brief 拼成一段追加到豆包提示词的需求说明。"""
+    lines = ["\n【用户剪辑需求 brief（务必遵循）】"]
+    if brief.get("topic"):
+        lines.append(f"- 主题与口径：{brief['topic']}")
+    if brief.get("orientation"):
+        lines.append(f"- 画幅倾向：{brief['orientation']}")
+    if brief.get("rhythm"):
+        lines.append(f"- 节奏倾向：{brief['rhythm']}")
+    mk = brief.get("must_keep")
+    if mk:
+        lines.append("- 必保内容（尽量保留）：" + "、".join(mk))
+    md = brief.get("must_delete")
+    if md:
+        lines.append("- 必删内容（尽量剔除）：" + "、".join(md))
+    if brief.get("subtitles"):
+        lines.append(f"- 字幕：开启（{brief.get('subtitle_lang', 'zh-CN')}）")
+    if brief.get("platform"):
+        lines.append(f"- 发布平台：{brief.get('platform')}")
+    fb = brief.get("forbidden")
+    if fb:
+        lines.append("- 特殊禁忌（不要出现）：" + "、".join(fb))
+    lines.append("请严格依据上述需求做高光/冗余判断，必保内容优先保留，必删内容优先剔除。")
+    return "\n".join(lines)
+
+
+def inject_brief_into_prompt(prompt: str, brief: dict, default_range=(60, 90)) -> str:
+    """把 brief 注入提示词：替换写死的时长/区间，并追加需求段。无 brief 原样返回。"""
+    if not brief:
+        return prompt
+    lo, hi = [int(x) for x in (brief_target_range(brief) or default_range)]
+    p = prompt.replace("约 248 秒", "本视频").replace("248 秒", "本视频")
+    p = re.sub(r"\d+-\d+", f"{lo}-{hi}", p)
+    return p + "\n" + _brief_block(brief)
+
+
 def load_env(path=None) -> None:
     """从仓库根目录 .env 读取环境变量（ARK_API_KEY 等），仅 setdefault 不覆盖。"""
     p = Path(path) if path else (REPO_ROOT / ".env")
